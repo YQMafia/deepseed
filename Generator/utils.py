@@ -25,15 +25,29 @@ def relation_reserve(csv_path, st=[46], ed=[52]):
     return cn/n
 
 
-def polyAT_freq(valid_path, ref_path):
+def polyAT_freq(valid_path, ref_path, small):
     A_dict_valid = {'AAAAA':0, 'AAAAAA':0, 'AAAAAAA': 0, 'AAAAAAAA': 0}
     A_dict_ref = {'AAAAA': 0, 'AAAAAA': 0, 'AAAAAAA': 0, 'AAAAAAAA': 0}
     T_dict_valid = {'TTTTT':0, 'TTTTTT':0, 'TTTTTTT': 0, 'TTTTTTTT': 0}
     T_dict_ref = {'TTTTT': 0, 'TTTTTT': 0, 'TTTTTTT': 0, 'TTTTTTTT': 0}
     valid_df = pd.read_csv(valid_path)
-    ref_df = pd.read_csv(ref_path)
     fakeB = list(valid_df['fakeB'])
-    realB = list(ref_df['realB'])
+    realB = []
+    with open(ref_path) as f:
+        for i, line in enumerate(f):
+            if i == 0:
+                continue
+            if small:
+                if i > 300:
+                    break
+            active = map(lambda x: float(x), line.split(',')[0].split('\t')[1:])
+            seqB = line.split(',')[1]
+
+            if not len(seqB) == 2001:
+                continue
+            realB.append(seqB)
+
+
     for i in range(len(fakeB)):
         fakeBt = fakeB[i]
         for keys in A_dict_valid.keys():
@@ -88,7 +102,7 @@ def get_logger(log_path='cache/training_log/', name='log'):
     return logger
 
 
-def convert(n, x):
+def convert(n, x, k):
     list_a = [0,1,2,3,4,5,6,7,8,9,'A','b','C','D','E','F']
     list_b = []
     while True:
@@ -99,24 +113,24 @@ def convert(n, x):
         n = s
     list_b.reverse()
     res = []
-    for i in range(x):
+    for i in range(k):
         res.append(0)
     res0 = []
     for i in list_b:
         res0.append(list_a[i])
     for i in range(len(res0)):
-        res[x - i - 1] = res0[len(res0) - i - 1]
+        res[k - i - 1] = res0[len(res0) - i - 1]
     return res
 
 
 def kmer_frequency(valid_path, ref_path, k=4, save_path='cache/', save_name='99'):
     print('Start saving the frequency figure......')
-    bg = ['A', 'T', 'C', 'G']
+    bg = ['N', 'A', 'T', 'C', 'G']
     valid_kmer, ref_kmer = collections.OrderedDict(), collections.OrderedDict()
     kmer_name = []
-    for i in range(4**k):
+    for i in range(len(bg)**k):
         nameJ = ''
-        cov = convert(i, 4)
+        cov = convert(i, len(bg), k)
         for j in range(k):
                 nameJ += bg[cov[j]]
         kmer_name.append(nameJ)

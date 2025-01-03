@@ -85,7 +85,7 @@ def save_sequence(tensorSeq, tensorInput, tensorRealB, save_path='results/', nam
 
 
 def decode_oneHot(seq, label):
-    keys = ['A', 'T', 'C', 'G']
+    keys = ['N', 'A', 'T', 'C', 'G']
     dSeq = ''
     for i in range(np.size(seq, 1)):
         if label == 'realA':

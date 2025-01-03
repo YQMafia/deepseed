@@ -12,7 +12,8 @@ Cython==0.29.24
 dataclasses==0.6
 decorator==4.4.2
 distfit==1.4.2
-fairseq==0.10.2
+numpy==1.20.3
+
 fbpca==1.0
 filelock==3.0.12
 gensim==4.1.2
@@ -40,7 +41,6 @@ natsort==8.0.0
 networkx==2.5.1
 nltk==3.6.2
 numba==0.54.0
-numpy==1.20.3
 olefile==0.46
 omegaconf==2.1.0
 packaging==21.0
@@ -89,4 +89,5 @@ xlrd==1.2.0
 yacs==0.1.8
 zipp==3.5.0
 
+fairseq==0.10.2
 --find-links https://download.pytorch.org/whl/cu101/torch_stable.html

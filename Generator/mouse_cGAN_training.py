@@ -1,7 +1,9 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = '4'
 import torch
 import torch.nn as nn
 from torch.nn import init
-from pro_data import LoadData
+from mouse_pro_data import LoadData
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torch.autograd as autograd
@@ -9,8 +11,8 @@ from tensor2seq import save_sequence, tensor2seq, reserve_percentage
 from transfer_fasta import csv2fasta
 import utils
 import matplotlib
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = '3'
+import time
+
 matplotlib.use('Agg')
 
 
@@ -96,7 +98,7 @@ class EncoderLayer(nn.Module):
 class Generator(nn.Module):
     ## input_nc = 4, output_nc = 4, seqL = 165
     ## (32, 165, 4)
-    def __init__(self, input_nc, output_nc, ngf=512, seqL=50, bias=True, layer_num=1, num_heads=16):
+    def __init__(self, input_nc, output_nc, ngf=128, seqL=50, bias=True, layer_num=1, num_heads=16):
         super(Generator, self).__init__()
         self.ngf, self.seqL = ngf, seqL
         self.first_linear = nn.Linear(seqL*input_nc, seqL*ngf, bias=bias)
@@ -125,7 +127,7 @@ class Generator(nn.Module):
 
 class Discriminator(nn.Module):
     ## (32, 165, 8)
-    def __init__(self, output_nc, ndf=512, seqL=50, bias=True, layer_num=1, num_heads=16):
+    def __init__(self, output_nc, ndf=128, seqL=50, bias=True, layer_num=1, num_heads=16):
         super(Discriminator, self).__init__()
         self.Conv1 = nn.Conv1d(output_nc, ndf, 1)
         self.layer_num = layer_num
@@ -152,13 +154,13 @@ class Discriminator(nn.Module):
 
 class WGAN():
 
-    def __init__(self, input_nc, output_nc, seqL=100, lr=1e-4, gpu_ids='0', l1_w=10):
+    def __init__(self, input_nc, output_nc, seqL=100, nf=128, lr=1e-4, gpu_ids='0', l1_w=10):
         super(WGAN, self).__init__()
         self.gpu_ids = gpu_ids
         self.l1_w = l1_w
         self.device = torch.device('cuda:{}'.format(self.gpu_ids[0])) if self.gpu_ids else torch.device('cpu')
-        self.generator = Generator(input_nc, output_nc, seqL=seqL)
-        self.discriminator = Discriminator(input_nc + output_nc, seqL=seqL)
+        self.generator = Generator(input_nc, output_nc, seqL=seqL, ngf=nf)
+        self.discriminator = Discriminator(input_nc + output_nc, seqL=seqL, ndf=nf)
         if len(gpu_ids) > 0:
             self.generator = self.generator.cuda()
             self.discriminator = self.discriminator.cuda()
@@ -202,16 +204,34 @@ class WGAN():
 
 #pip install torch==1.8.0+cu111 torchvision==0.9.0+cu111 torchaudio==0.8.0 -f https://download.pytorch.org/whl/torch_stable.html
 def main():
-    data_name = 'ecoli_mpra_3_laco'
-    seqL = 165
-    train_data, test_data = DataLoader(LoadData(is_train=True, path='../data/{}.csv'.format(data_name), split_r=0.8),
-                                       batch_size=32, shuffle=True), DataLoader(LoadData(is_train=False, path='../data/{}.csv'.format(data_name), split_r=0.2), batch_size=32)
+    data_name = 'mouse'
+    data_path = '/home/yinwenhai/DeepSeed/data/Mouse_ENCODE_transcriptome_data.csv'
+    seqL = 2000
+    bsz = 8
+    nf=128
+    lr = 0.00001
+    small = True
+    # trainn = LoadData(is_train=True, path=data_path, split_r=0.8, small=small)
+    # testt = LoadData(is_train=False, path=data_path, split_r=0.2, small=small)
+    train_data, test_data = DataLoader(LoadData(is_train=True, path=data_path, split_r=0.8, small=small),
+                                       batch_size=bsz, shuffle=True), DataLoader(LoadData(is_train=False, path=data_path, split_r=0.8, small=small), batch_size=bsz)
     train_data = get_infinite_batches(train_data)
     logger = utils.get_logger(log_path='cache/training_log/', name=data_name)
+    logger.info('bsz8,nf128,lr0.00001')
     n_critics = 5
-    n_iters = 10000
-    model = WGAN(input_nc=4, output_nc=4, seqL=seqL, l1_w=50)
+    n_iters = 100000
+    model = WGAN(input_nc=5, output_nc=5, seqL=seqL, l1_w=50, nf=nf, lr=lr)
     d_loss, g_loss, g_l1 = 0, 0, 0
+    print('start_training')
+
+    while os.path.exists('experiment/'+time.strftime('%Y-%m-%d-%H-%M')):
+        print('waiting')
+        time.sleep(5)
+    out_dir = 'experiment/'+time.strftime('%Y-%m-%d-%H-%M')
+    os.mkdir(out_dir)
+    os.mkdir(out_dir+'/cache')
+    os.mkdir(out_dir + '/results')
+    os.mkdir(out_dir + '/check_points')
     for i in range(n_iters):
         #train discriminators
         for j in range(n_critics):
@@ -229,30 +249,34 @@ def main():
                     tensorInput.append(eval_data['in'])
                     tensorRealB.append(eval_data['out'])
             logger.info('Training: iters: {}, dloss: {}, gloss:{}, gl1:{}'.format(i, d_loss / 100 / n_critics, g_loss / 100, g_l1 / 100))
-            logger.info('Testing: reserve percentage: {}%'.format(reserve_percentage(tensorInput, tensorSeq)))
-            d_loss, g_loss, g_l1 = 0, 0, 0
-            csv_name = save_sequence(tensorSeq, tensorInput, tensorRealB, save_path='cache/', name='inducible_{}_'.format(data_name), cut_r=0.1)
-            A_dict_valid, A_dict_ref, T_dict_valid, T_dict_ref = utils.polyAT_freq(csv_name, '../data/{}.csv'.format(data_name))
-            logger.info('polyA valid AAAAA:{} AAAAAA:{} AAAAAAA:{} AAAAAAAA:{}'.format(A_dict_valid['AAAAA'],
-                                                                                 A_dict_valid['AAAAAA'],
-                                                                                 A_dict_valid['AAAAAAA'],
-                                                                                 A_dict_valid['AAAAAAAA']))
-            logger.info('polyA ref AAAAA:{} AAAAAA:{} AAAAAAA:{} AAAAAAAA:{}'.format(A_dict_ref['AAAAA'],
-                                                                                 A_dict_ref['AAAAAA'],
-                                                                                 A_dict_ref['AAAAAAA'],
-                                                                                 A_dict_ref['AAAAAAAA']))
-            logger.info('polyT valid TTTTT:{} TTTTTT:{} TTTTTTT:{} TTTTTTTT:{}'.format(T_dict_valid['TTTTT'],
-                                                                                 T_dict_valid['TTTTTT'],
-                                                                                 T_dict_valid['TTTTTTT'],
-                                                                                 T_dict_valid['TTTTTTTT']))
-            logger.info('polyT ref TTTTT:{} TTTTTT:{} TTTTTTT:{} TTTTTTTT:{}'.format(T_dict_ref['TTTTT'],
-                                                                               T_dict_ref['TTTTTT'],
-                                                                               T_dict_ref['TTTTTTT'],
-                                                                               T_dict_ref['TTTTTTTT']))
-            utils.kmer_frequency(csv_name, '../data/{}.csv'.format(data_name), k=4, save_path='cache/figure/', save_name=data_name + str(i))
-            csv2fasta(csv_name, 'cache/gen_', 'iter_{}'.format(i))
-            torch.save(model.generator, 'check_points/' + data_name + '_net_G_' + str(i) + '.pth')
-            torch.save(model.discriminator, 'check_points/' + data_name + '_net_D_' + str(i) + '.pth')
+            if i % 500 == 499:
+                # logger.info('Testing: reserve percentage: {}%'.format(reserve_percentage(tensorInput, tensorSeq)))
+                d_loss, g_loss, g_l1 = 0, 0, 0
+                csv_name = save_sequence(tensorSeq, tensorInput, tensorRealB, save_path=out_dir+'/cache/', name='inducible_{}_'.format(data_name), cut_r=0.1)
+                A_dict_valid, A_dict_ref, T_dict_valid, T_dict_ref = utils.polyAT_freq(csv_name, data_path, small=small)
+                logger.info('polyA valid AAAAA:{} AAAAAA:{} AAAAAAA:{} AAAAAAAA:{}'.format(A_dict_valid['AAAAA'],
+                                                                                     A_dict_valid['AAAAAA'],
+                                                                                     A_dict_valid['AAAAAAA'],
+                                                                                     A_dict_valid['AAAAAAAA']))
+                logger.info('polyA ref AAAAA:{} AAAAAA:{} AAAAAAA:{} AAAAAAAA:{}'.format(A_dict_ref['AAAAA'],
+                                                                                     A_dict_ref['AAAAAA'],
+                                                                                     A_dict_ref['AAAAAAA'],
+                                                                                     A_dict_ref['AAAAAAAA']))
+                logger.info('polyT valid TTTTT:{} TTTTTT:{} TTTTTTT:{} TTTTTTTT:{}'.format(T_dict_valid['TTTTT'],
+                                                                                     T_dict_valid['TTTTTT'],
+                                                                                     T_dict_valid['TTTTTTT'],
+                                                                                     T_dict_valid['TTTTTTTT']))
+                logger.info('polyT ref TTTTT:{} TTTTTT:{} TTTTTTT:{} TTTTTTTT:{}'.format(T_dict_ref['TTTTT'],
+                                                                                   T_dict_ref['TTTTTT'],
+                                                                                   T_dict_ref['TTTTTTT'],
+                                                                                   T_dict_ref['TTTTTTTT']))
+                utils.kmer_frequency(csv_name, data_path, k=4, save_path=out_dir+'/cache/', save_name=data_name + str(i))
+                csv2fasta(csv_name, out_dir+'/cache/gen_', 'iter_{}'.format(i))
+                if i % 1000 == 999:
+                    torch.save(model.generator, out_dir+'/check_points/' + data_name + '_net_G_' + str(i) + '.pth')
+                    torch.save(model.discriminator, out_dir+'/check_points/' + data_name + '_net_D_' + str(i) + '.pth')
+            # torch.save(model.generator, out_dir + '/check_points/' + data_name + '_net_G' + '.pth')
+            # torch.save(model.discriminator, out_dir + '/check_points/' + data_name + '_net_D' + '.pth')
 
 
 if __name__ == '__main__':

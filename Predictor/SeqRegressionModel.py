@@ -24,6 +24,8 @@ def Seq2Scalar(input_nc,
                norm_layer=nn.BatchNorm1d,
                use_dropout=True,
                n_blocks=3,
+               dim = 128,
+               layers = 3,
                padding_type='reflect',
                mode='Hanwen',
                seqL=100):
@@ -54,9 +56,10 @@ def Seq2Scalar(input_nc,
     elif mode == 'densenet':
         return DenseNet(input_nc=4, growth_rate=32, block_config=(2, 2, 4, 2),
                  num_init_features=64, bn_size=4, drop_rate=0.2, input_length=seqL)
+    ####num_init_features=64
     elif mode == 'denselstm':
-        return DenseLSTM(input_nc=4, growth_rate=32, block_config=(2, 2, 4, 2),
-                 num_init_features=64, bn_size=4, drop_rate=0.2, input_length=seqL)
+        return DenseLSTM(input_nc=5, growth_rate=32, block_config=(2, 2, 4, 2),
+                 num_init_features=dim, bn_size=4, drop_rate=0.2, input_length=seqL)
     elif mode == 'denseconnectedlstm':
         return DenseConnectedLSTM(input_nc=4, growth_rate=32, block_config=(2, 2, 4, 2),
                  num_init_features=64, bn_size=4, drop_rate=0.2, input_length=seqL)
@@ -674,9 +677,10 @@ class DenseLSTM(nn.Module):
         self.features = nn.Sequential(OrderedDict([]))
         length = np.floor((input_length + 2 * 1 - 1 - 2)/2 + 1)
         # Each denseblock
+        ##num_layers=3
         self.lstm = nn.Sequential(OrderedDict([]))
         self.lstm.add_module('lstm_layer', torch.nn.LSTM(input_size=num_init_features, hidden_size=num_init_features,
-                                                       num_layers=3, bias=True, batch_first=True, bidirectional=True))
+                                                       num_layers=6, bias=True, batch_first=True, bidirectional=True))
         num_features = 2*num_init_features
         for i, num_layers in enumerate(block_config):
             block = _DenseBlock(num_layers=num_layers, num_input_features=num_features,
@@ -693,7 +697,7 @@ class DenseLSTM(nn.Module):
         self.features.add_module('norm5', nn.BatchNorm1d(num_features))
 
         # Linear layer
-        self.ratio = nn.Linear(int(length) * num_features, 1)
+        self.ratio = nn.Linear(int(length) * num_features, 30)
 
         # Official init from torch repo.
         for m in self.modules():
