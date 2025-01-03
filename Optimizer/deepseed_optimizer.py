@@ -1,0 +1,82 @@
+import optimizer_module
+from SeqRegressionModel import *
+from wgan_attn import *
+import torchvision.transforms as transforms
+import collections
+import pandas as pd
+import os
+
+
+def main():
+    if not os.path.exists('results'):
+        os.mkdir('results')
+    f = open("../data/input_promoters.txt")
+    lines = f.readlines()
+    polish_seq, original_seq, seq_name = [], [], collections.OrderedDict()
+    size_prop = 5*64 #5*1024 if you have enough gpu space
+    max_iter = 30  #100
+    gen_num = 5
+    similarity_penalty = 0.85
+    prob_mut = 0.005
+    # device = str(6)
+    # device = torch.device('cuda:{}'.format(device)) if device else torch.device('cpu')
+    # torch.cuda.set_device(device)
+    torch.cuda.is_available = lambda: False
+    for line in lines:
+        #if len(control_seq) == 1: break
+        if '>' not in line:
+            if 'M' in line:
+                polish_seq.append(line.strip())
+                seq_name[line.strip()] = names
+            else:
+                original_seq.append(line.strip())
+        else:
+            names = (line.split('>')[1].strip())
+    predictor_path = "/mnt/wangbolin/code/DeepSEED/deepseed4mouse/Predictor/results/model/adpf4_dataBC_lr0.005_epoch100_seqL1000_model_denselstm_expr_denselstm.pth"
+    generator_path = "/mnt/wangbolin/code/DeepSEED/deepseed4mouse/Generator/train_results/bs32_seqL1000_ncritics5_niters10000_random_seq_v2/ckpt/net_G_best.pth"
+    op = optimizer_module.optimizer_fix_flank(predictor_path=predictor_path,
+                                             generator_path=generator_path,
+                                             is_gpu=False,
+                                             size_pop=size_prop,
+                                             seqL=1000,
+                                             max_iter=max_iter,
+                                             gen_num=gen_num,
+                                             similarity_penalty=similarity_penalty,
+                                             prob_mut=prob_mut)
+    print('{} {}'.format(len(polish_seq), len(original_seq)))
+    op.set_input(polish_seq, original_seq)
+    print('|***************************|')
+    print(' Polishing Process Start!')
+    print('|***************************|')
+    op.optimization()
+    opt_save_path = 'results/adpf4_bs32_seqL1000_ncritics5_niters10000_random_seq_v2.txt'
+    #history_save_path = 'results/ecoli_3_laco.csv'
+
+    with open(opt_save_path, "w") as f:
+        f.write('predictor path: {} \n'.format(predictor_path))
+        f.write('generator path: {} \n'.format(generator_path))
+        f.write('size population: {}, max iter: {}, generation number: {}, similarity penalty: {}, probability of mutation: {}\n'.format(size_prop, max_iter, gen_num, similarity_penalty, prob_mut))
+        i = 0
+        for seq in op.seqs_string:
+            f.write('Input sequences: {}\n'.format(seq))
+            control_seq = op.control_results[seq]
+            seq_control_eval = transforms.ToTensor()(optimizer_module.one_hot(control_seq)).float()
+            if op.is_gpu:
+                seq_control_eval = seq_control_eval.cuda()
+            expression_eval = op.predictor(seq_control_eval)
+            f.write(seq_name[seq] + '\n')
+            f.write('control: {} predict_expression:{}\n'.format(control_seq, 2 ** expression_eval.item()))
+            for j in range(op.gen_num):
+                f.write('case: {} optimize expression: {}\n'.format(op.seq_results[seq][j], 2 ** op.expr_results[seq][j]))
+            i += 1
+    f.close()
+    #history_data = pd.DataFrame(op.seq_opt_history)
+    #history_data.to_csv(history_save_path, index=False)
+    print('|***************************|')
+    print(' Polishing Process Finished!')
+    print('|***************************|')
+
+
+
+if __name__ == '__main__':
+    main()
