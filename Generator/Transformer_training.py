@@ -95,7 +95,7 @@ def main():
     weight = args.weight
     
 
-    folder_name =  '/mnt/wangbolin/code/data/Generator_results/' + 'sgdlr0.0001' + '_nlayers' + str(num_layers) + '_w'  + str(weight) + '_dmodel' + str(d_model) + \
+    folder_name =  '/mnt/wangbolin/code/data/Generator_results/' + 'adamlr0.0001' + '_nlayers' + str(num_layers) + '_w'  + str(weight) + '_dmodel' + str(d_model) + \
          '_nhead'+ str(nhead) +  'bs' + str(batch_size) + '_seqL' + str(seqL) + '_ncritics' + str(n_critics) + '_niters' + str(n_iters) + '_' + data_name + '/'
     try:
         os.mkdir(folder_name)
@@ -138,7 +138,8 @@ def main():
     model = TransformerModel(input_dim=seqL, d_model=d_model, nhead=nhead, num_coder_layers=num_layers).to(device)
     loss1_value, loss2_value, loss_value = 0, 0, 0
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    #optimizer = optim.Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0.0001, amsgrad=False)
     for i in tqdm(range(n_iters)):
         #train discriminators
         for j in range(n_critics):

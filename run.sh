@@ -12,7 +12,7 @@ python cGAN_training.py --data_name random_promoters_v2 --batch_size 32 --seqL 1
     --n_critics  25  --n_iters 10000      
 
 cd Generator;
-python Transformer_training.py --data_name based_cst69_promoters --batch_size 256   --gpuid 2 \
+python Transformer_training.py --data_name based_cst69_promoters --batch_size 256   --gpuid 0 \
     --nhead  8  --num_layers 1 --d_model 256  --n_critics 50 --n_iters 1000 --weight 0.0
 
 ### 2. Training the predictor (Expected run time on GeForce GTX 1080Ti: 0.5 hour)
