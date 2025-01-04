@@ -41,6 +41,7 @@ def reserve_percentage(tensorInput, tensorSeq):
             seq = tensor2seq(torch.squeeze(seqT[j, :, :]), label)
             results[label].append(seq)
     c, n = 0.0, 0.0
+
     for i in range(len(results['fakeB'])):
         seqA = results['realA'][i]
         seqB = results['fakeB'][i]

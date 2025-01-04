@@ -95,7 +95,7 @@ def main():
     weight = args.weight
     
 
-    folder_name =  '/mnt/wangbolin/code/data/Generator_results/' + 'coFcTrans' + '_nlayers' + str(num_layers) + '_w'  + str(weight) + '_dmodel' + str(d_model) + \
+    folder_name =  '/mnt/wangbolin/code/data/Generator_results/' + 'sgdlr0.0001' + '_nlayers' + str(num_layers) + '_w'  + str(weight) + '_dmodel' + str(d_model) + \
          '_nhead'+ str(nhead) +  'bs' + str(batch_size) + '_seqL' + str(seqL) + '_ncritics' + str(n_critics) + '_niters' + str(n_iters) + '_' + data_name + '/'
     try:
         os.mkdir(folder_name)
@@ -136,9 +136,9 @@ def main():
     device = torch.device('cuda:{}'.format(args.gpuid)) if args.gpuid else torch.device('cpu')
     torch.cuda.set_device(device)
     model = TransformerModel(input_dim=seqL, d_model=d_model, nhead=nhead, num_coder_layers=num_layers).to(device)
-    loss1, loss2, loss = 0, 0, 0
+    loss1_value, loss2_value, loss_value = 0, 0, 0
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = optim.SGD(model.parameters(), lr=0.0001)
     for i in tqdm(range(n_iters)):
         #train discriminators
         for j in range(n_critics):
@@ -152,6 +152,10 @@ def main():
             loss = loss1 + weight * loss2
             print(i, j, loss1.item(), loss2.item())
             
+            loss1_value += loss1.item()
+            loss2_value += loss2.item()
+            loss_value += loss.item()
+            
             optimizer.zero_grad()  
             loss.backward()        
             optimizer.step()
@@ -163,13 +167,13 @@ def main():
             tensorSeq, tensorInput, tensorRealB = [], [], []
             for j, eval_data in enumerate(test_data):
                 with torch.no_grad():
-                    in_data = _data['in'].to(device)
-                    out_data= _data['out'].to(device)
+                    in_data = eval_data['in'].to(device)
+                    out_data= eval_data['out'].to(device)
                     output1, output2 = model(in_data, out_data)
                     tensorSeq.append(output1)
                     tensorInput.append(eval_data['in'])
                     tensorRealB.append(eval_data['out'])
-            logger.info('Training: iters: {}, loss1: {}, loss2:{}, loss:{}'.format(i, loss1 / 10 / n_critics, loss2 / 10/ n_critics, loss / 10/ n_critics))
+            logger.info('Training: iters: {}, loss1: {}, loss2:{}, loss:{}'.format(i, loss1_value / 10 / n_critics, loss2_value / 10/ n_critics, loss_value / 10/ n_critics))
             logger.info('Testing: reserve percentage: {}%'.format(reserve_percentage(tensorInput, tensorSeq)))
             csv_name = save_sequence(tensorSeq, tensorInput, tensorRealB, save_path=cache_path, name='inducible_', cut_r=0.1)
             A_dict_valid, A_dict_ref, T_dict_valid, T_dict_ref = utils.polyAT_freq(csv_name, '/mnt/wangbolin/code/data/data/{}.csv'.format(data_name))
@@ -191,12 +195,12 @@ def main():
                                                                                T_dict_ref['TTTTTTTT']))
             #utils.kmer_frequency(csv_name, '../data/{}.csv'.format(data_name), k=4, save_path=cache_figure_path, save_name=data_name + '_' + str(i))
             csv2fasta(csv_name, cache_path + 'gen_', 'iter_{}'.format(i))
-            if best_loss1 > loss1 :
-                best_loss1 = loss1
+            if best_loss1 > loss1_value :
+                best_loss1 = loss1_value
                 torch.save(model, folder_name + '/ckpt/' + 'best' + '.pth')
             else :
                 torch.save(model, folder_name + '/ckpt/' + 'latest' + '.pth')
-            loss1, loss2, loss = 0, 0, 0
+            loss1_value, loss2_value, loss_value = 0, 0, 0
 
 if __name__ == '__main__':
     main()
